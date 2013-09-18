@@ -1,2 +1,2 @@
 Example usage:
-docker run -e JOBTRACKER=jobtracker -e NAMENODE=namenode -t -i -h datanode1 8144769386bf /bin/bash
+docker run -e JOBTRACKER=jobtracker -e NAMENODE=namenode -d -h datanode2 1b8194f5fb9e /root/datanode_init.sh
