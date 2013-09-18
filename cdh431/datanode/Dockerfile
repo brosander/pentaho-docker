@@ -7,6 +7,6 @@ run chown hdfs:hdfs /data/1/dfs/dn
 run mkdir -p /data/1/mapred/local
 run chown mapred:hadoop /data/1/mapred/local
 run mkdir /var/local/hadoop
-run chown hdfs:hdfs /var/local/hadoop
+run chown hdfs:hadoop /var/local/hadoop
 add datanode_init.sh /root/
 run chmod +x /root/datanode_init.sh
