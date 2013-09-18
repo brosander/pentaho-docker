@@ -1,0 +1,2 @@
+Example command:
+docker run -e JOBTRACKER=jobtracker -e NAMENODE=namenode -t -i -h namenode c38cf720ba0a /bin/bash
