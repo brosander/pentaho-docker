@@ -1,7 +1,9 @@
 #!/usr/bin/python
 
 import argparse
+import os
 import paramiko
+import shutil
 import socket
 from subprocess import Popen, PIPE
 import sys
@@ -10,16 +12,38 @@ import time
 jobtracker = 'dummyJobtrackerHostname'
 namenode = 'dummyNamenodeHostname'
 
+def createHostDisk(hostname, gigabytes):
+  path = os.path.expanduser('~/docker-directories/' + hostname)
+  imageName = path + '/partition.ext3'
+  folderPath = path + '/mnt'
+  if os.path.exists(path):
+    print 'Removing existing path: ' + path
+    Popen(['sudo', 'umount', folderPath], stdout=PIPE).communicate()
+    shutil.rmtree(path)
+  os.makedirs(folderPath)
+  cmd = ['dd', 'if=/dev/zero', 'of=' + imageName,'bs=1G', 'count=' + str(gigabytes)]
+  print 'Running: ' + ' '.join(cmd)
+  Popen(cmd, stdout = PIPE).communicate()
+  cmd = ['mkfs.ext3', '-F', imageName]
+  print 'Running: ' + ' '.join(cmd)
+  Popen(cmd, stdout = PIPE).communicate()
+  cmd = ['sudo', 'mount', '-o', 'loop,rw', imageName, folderPath]
+  print 'Running: ' + ' '.join(cmd)
+  Popen(cmd, stdout = PIPE).communicate()
+  return folderPath
 
-def startContainer(hostname, imageName, startCommand):
+
+def startContainer(hostname, imageName, startCommand, docker_extra_args = []):
   cmd = ['docker', 'run']
   cmd.extend(['-e', 'JOBTRACKER=' + jobtracker])
   cmd.extend(['-e', 'NAMENODE=' + namenode])
   cmd.extend(['-d'])
   cmd.extend(['-h', hostname])
+  cmd.extend(docker_extra_args)
   cmd.extend([imageName])
   cmd.extend([startCommand])
   print 'Starting ' + hostname + ' with image ' + imageName
+  print 'Command: ' + ' '.join(cmd)
   Popen(cmd, stdout=PIPE) 
 
 
@@ -56,15 +80,24 @@ if __name__ == '__main__':
   parser.add_argument('-d', '--domain', default='hadoop', help='Domain suffix for all hostnames')
   parser.add_argument('-j', '--jobtracker', default='jobtracker', help='Jobtracker hostname')
   parser.add_argument('-n', '--namenode', default='namenode', help='Namenode hostname')
+  parser.add_argument('-u', '--users', default='bryan', help='Comma seperated list of users')
+  parser.add_argument('-o', '--datanodes', default=2, type=int, help='Number of datanodes to create')
+  parser.add_argument('-s', '--size', default=1, type=int, help='Size (GB) of datanode disks')
   args = parser.parse_args()
   jobtracker = args.jobtracker + '.' + args.domain
   namenode = args.namenode + '.' + args.domain
-  datanodes = ['datanode' + str(num) + '.' + args.domain for num in range(2)]
+  datanodes = ['datanode' + str(num) + '.' + args.domain for num in range(args.datanodes)]
   startContainer(namenode, 'docker:5000/cdh431namenode', '/root/namenode_init.sh')
   startContainer(jobtracker, 'docker:5000/cdh431jobtracker', '/root/jobtracker_init.sh')
   waitOnSsh(namenode)
   for datanode in datanodes:
-    startContainer(datanode, 'docker:5000/cdh431datanode', '/root/datanode_init.sh')
+    folder = createHostDisk(datanode, args.size)
+    dn = folder + '/dn'
+    os.makedirs(dn)
+    local = folder + '/local'
+    os.makedirs(local)
+    startContainer(datanode, 'docker:5000/cdh431datanode', '/root/datanode_init.sh', 
+      ['-v', dn + ':/data/1/dfs/dn', '-v', local + ':/data/1/mapred/local'])
   for datanode in datanodes:
     waitOnSsh(datanode)
   runCommands([
@@ -79,3 +112,8 @@ if __name__ == '__main__':
   runCommands(['service hadoop-0.20-mapreduce-jobtracker start'], jobtracker)
   for datanode in datanodes:
     runCommands(['service hadoop-0.20-mapreduce-tasktracker start'], datanode)
+  for user in args.users.split(','):
+    runCommands([
+        'su - hdfs -c "hadoop fs -mkdir /user/' + user + '"',
+        'su - hdfs -c "hadoop fs -chown ' + user + ' /user/' + user + '"'
+      ], namenode)
