@@ -175,8 +175,8 @@ def configureHive(credentials, namenode_credentials, zookeeper_hostnames):
     'python hadoopProperties.py -i -f /etc/hive/conf/hive-site.xml -p hive.support.concurrency -v true',
     'python hadoopProperties.py -i -f /etc/hive/conf/hive-site.xml -p hive.zookeeper.quorum -v ' + ','.join(zookeeper_hostnames),
     'python hadoopProperties.py -i -f /etc/hive/conf/hive-site.xml -p hive.zookeeper.client.port -v 2181',
-    'service hive-metastore start',
-    'service hive-server start'
+    'service hive-metastore restart',
+    'service hive-server restart'
   ]
   print str(runCommands(commands, credentials))
 
