@@ -4,7 +4,7 @@ run echo deb [arch=amd64] http://archive.cloudera.com/cdh4/ubuntu/precise/amd64/
 run echo deb-src http://archive.cloudera.com/cdh4/ubuntu/precise/amd64/cdh precise-cdh4.3.1 contrib >> /etc/apt/sources.list.d/cloudera.list
 run curl -s http://archive.cloudera.com/cdh4/ubuntu/precise/amd64/cdh/archive.key | apt-key add -
 run apt-get update
-run apt-get install -y bigtop-jsvc bigtop-utils hadoop hadoop-hdfs netcat-openbsd psmisc zookeeper python-lxml
+run apt-get install -y bigtop-jsvc bigtop-utils hadoop hadoop-hdfs netcat-openbsd psmisc zookeeper python-lxml zookeeper-server hbase-master hbase-rest hbase-thrift hbase-regionserver
 run python /root/setPassword.py -i -u root -p password
 run cp /etc/hadoop/conf/core-site.xml /etc/hadoop/conf/mapred-site.xml
 mkdir /root/.ssh

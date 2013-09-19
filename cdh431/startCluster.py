@@ -108,7 +108,6 @@ def configureZookeeper(credential_list):
   createAndPushZookeeperConfig(credential_list)
   for credentials, index in zip(credential_list, range(1, len(credential_list) + 1)):
     print str(runCommands([
-        'apt-get install -y zookeeper-server',
         'echo "export JAVA_HOME=/usr/lib/jvm/`ls /usr/lib/jvm/ | sort | tail -n 1`" >> /etc/default/bigtop-utils',
         'cp /root/zookeeper.config /etc/zookeeper/conf/zoo.cfg',
         'service zookeeper-server init --force --myid=' + str(index),
@@ -129,19 +128,17 @@ def configureHBase(credential_list, namenode_credentials, zookeeper_hostnames):
       'python hadoopProperties.py -i -f /etc/hbase/conf/hbase-site.xml -p hbase.zookeeper.property.clientPort -v 2181',
       ]
   #Setup hbase master
-  master_commands = ['apt-get install -y hbase-master']
+  master_commands = []
   master_commands.extend(common_commands)
   master_commands.extend([
       'python hadoopProperties.py -i -f /etc/hbase/conf/hbase-site.xml -p hbase.rest.port -v 60050',
       'service hbase-master start',
-      'apt-get install -y hbase-rest',
       'service hbase-rest start',
-      'apt-get install -y hbase-thrift',
       'service hbase-thrift start'
     ])
   print str(runCommands(master_commands, credential_list[0]))
   #Setupd region servers
-  region_commands = ['apt-get install -y hbase-regionserver']
+  region_commands = []
   region_commands.extend(common_commands)
   region_commands.append('service hbase-regionserver start')
   for credentials in credential_list[1:]:
