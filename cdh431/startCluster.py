@@ -121,7 +121,7 @@ def configureHBase(credential_list, namenode_credentials, zookeeper_hostnames):
       'su - hdfs -c "hadoop fs -chown hbase /hbase"'
     ], namenode_credentials))
   common_commands = [
-      'echo "export HBASE_MANAGES_ZK=false" > /etc/hbase/conf/hbase-env.sh',
+      'echo "export HBASE_MANAGES_ZK=false" >> /etc/hbase/conf/hbase-env.sh',
       'python hadoopProperties.py -i -f /etc/hbase/conf/hbase-site.xml -p hbase.cluster.distributed -v true',
       'python hadoopProperties.py -i -f /etc/hbase/conf/hbase-site.xml -p hbase.rootdir -v hdfs://' + namenode + ':9000/hbase',
       'python hadoopProperties.py -i -f /etc/hbase/conf/hbase-site.xml -p hbase.zookeeper.quorum -v ' + zookeeper_quorum,
@@ -143,6 +143,46 @@ def configureHBase(credential_list, namenode_credentials, zookeeper_hostnames):
   region_commands.append('service hbase-regionserver start')
   for credentials in credential_list[1:]:
     print str(runCommands(region_commands, credentials))
+
+def configureHive(credentials, namenode_credentials, zookeeper_hostnames):
+  commands = ['su - hdfs -c "hadoop fs -mkdir -p /user/hive/warehouse"', 'su - hdfs -c "hadoop fs -chmod -R 1777 /user/hive/warehouse"']
+  print str(runCommands(commands, namenode_credentials))
+  script = [
+      'CREATE DATABASE metastore;',
+      'USE metastore;',
+      'SOURCE /usr/lib/hive/scripts/metastore/upgrade/mysql/hive-schema-0.10.0.mysql.sql;',
+      "CREATE USER 'hive'@'" + credentials.hostname +"' IDENTIFIED BY 'mypassword';",
+      "REVOKE ALL PRIVILEGES, GRANT OPTION FROM 'hive'@'" + credentials.hostname + "';",
+      "GRANT SELECT,INSERT,UPDATE,DELETE,LOCK TABLES,EXECUTE ON metastore.* TO 'hive'@'" + credentials.hostname + "';",
+      'FLUSH PRIVILEGES;',
+      '\q'
+    ]
+  writeFileOverSsh(credentials, '\n'.join(script), '/root/hive.sql')
+  commands = [
+    'ln -s /usr/share/java/mysql-connector-java.jar /usr/lib/hive/lib/mysql-connector-java.jar',
+    "sed -i 's/bind-address/#bind-address/g' /etc/mysql/my.cnf",
+    'nohup su -s /bin/sh mysql -c "mysqld" > /dev/null 2>&1 &',
+    'until mysqladmin -u root password password; do echo "waiting on mysql"; sleep 1; done',
+    'mysql -u root --password=password < /root/hive.sql',
+    'python hadoopProperties.py -i -f /etc/hive/conf/hive-site.xml -p javax.jdo.option.ConnectionURL -v jdbc:mysql://' + credentials.hostname + '/metastore',
+    'python hadoopProperties.py -i -f /etc/hive/conf/hive-site.xml -p javax.jdo.option.ConnectionDriverName -v com.mysql.jdbc.Driver',
+    'python hadoopProperties.py -i -f /etc/hive/conf/hive-site.xml -p javax.jdo.option.ConnectionUserName -v hive',
+    'python hadoopProperties.py -i -f /etc/hive/conf/hive-site.xml -p javax.jdo.option.ConnectionPassword -v mypassword',
+    'python hadoopProperties.py -i -f /etc/hive/conf/hive-site.xml -p datanucleus.autoCreateSchema -v false',
+    'python hadoopProperties.py -i -f /etc/hive/conf/hive-site.xml -p datanucleus.fixedDatastore -v true',
+    'python hadoopProperties.py -i -f /etc/hive/conf/hive-site.xml -p datanucleus.autoStartMechanism -v SchemaTable',
+    'python hadoopProperties.py -i -f /etc/hive/conf/hive-site.xml -p hive.metastore.uris -v thrift://' + credentials.hostname + ':9083',
+    'python hadoopProperties.py -i -f /etc/hive/conf/hive-site.xml -p hive.support.concurrency -v true',
+    'python hadoopProperties.py -i -f /etc/hive/conf/hive-site.xml -p hive.zookeeper.quorum -v ' + ','.join(zookeeper_hostnames),
+    'python hadoopProperties.py -i -f /etc/hive/conf/hive-site.xml -p hive.zookeeper.client.port -v 2181',
+    'service hive-metastore start',
+    'service hive-server start'
+  ]
+  print str(runCommands(commands, credentials))
+
+
+if __name__ == '__main__2':
+  configureHive(SshCredentials('datanode0.bros'), SshCredentials('namenode.bros'), ['namenode.bros', 'jobtracker.bros', 'datanode0.bros'])
 
 if __name__ == '__main__':
   parser = argparse.ArgumentParser(description='''
@@ -181,6 +221,7 @@ if __name__ == '__main__':
   for datanode in datanodes:
     waitOnSsh(SshCredentials(datanode))
   runCommands([
+      'su - hdfs -c "hadoop fs -chmod 1777 /"',
       'su - hdfs -c "hadoop fs -mkdir /tmp"', 
       'su - hdfs -c "hadoop fs -chmod -R 1777 /tmp"',
       'su - hdfs -c "hadoop fs -mkdir -p /var/lib/hadoop-hdfs/cache/mapred/mapred/staging"',
@@ -194,8 +235,11 @@ if __name__ == '__main__':
     runCommands(['service hadoop-0.20-mapreduce-tasktracker start'], SshCredentials(datanode))
   for user in args.users.split(','):
     runCommands([
+        'su - hdfs -c "hadoop fs -mkdir /user"',
+        'su - hdfs -c "hadoop fs -chmod 1777 /user"',
         'su - hdfs -c "hadoop fs -mkdir /user/' + user + '"',
         'su - hdfs -c "hadoop fs -chown ' + user + ' /user/' + user + '"'
       ], SshCredentials(namenode))
   configureZookeeper([SshCredentials(hostname) for hostname in zookeeper_nodes])
   configureHBase([SshCredentials(hostname) for hostname in hbase_nodes], SshCredentials(namenode), zookeeper_nodes)
+  configureHive(SshCredentials(namenode), SshCredentials(namenode), zookeeper_nodes)
