@@ -115,20 +115,39 @@ def configureZookeeper(credential_list):
         'service zookeeper-server start'
       ], credentials))
 
-def configureHBase(credential_list, zookeeper_hostnames):
+def configureHBase(credential_list, namenode_credentials, zookeeper_hostnames):
   zookeeper_quorum = ','.join(zookeeper_hostnames)
-  for credentials in credential_list:
-    print str(runCommands([
-        'echo "<configuration></configuration>" > /etc/hadoop/conf/hbase-site.xml',
-        'python hadoopProperties.py -i -f /etc/hadoop/conf/hbase-site.xml -p hbase.zookeeper.property.clientPort -v 2181',
-        'python hadoopProperties.py -i -f /etc/hadoop/conf/hbase-site.xml -p hbase.zookeeper.property.dataDir -v /var/lib/zookeeper',
-        'python hadoopProperties.py -i -f /etc/hadoop/conf/hbase-site.xml -p hbase.zookeeper.property.clientPort -v ' + zookeeper_quorum,
-      ], credentials))
+  print str(runCommands([
+      'su - hdfs -c "hadoop fs -mkdir /hbase"',
+      'su - hdfs -c "hadoop fs -chown hbase /hbase"'
+    ], namenode_credentials))
+  common_commands = [
+      'echo "export HBASE_MANAGES_ZK=false" > /etc/hbase/conf/hbase-env.sh',
+      'python hadoopProperties.py -i -f /etc/hbase/conf/hbase-site.xml -p hbase.cluster.distributed -v true',
+      'python hadoopProperties.py -i -f /etc/hbase/conf/hbase-site.xml -p hbase.rootdir -v hdfs://' + namenode + ':9000/hbase',
+      'python hadoopProperties.py -i -f /etc/hbase/conf/hbase-site.xml -p hbase.zookeeper.quorum -v ' + zookeeper_quorum,
+      'python hadoopProperties.py -i -f /etc/hbase/conf/hbase-site.xml -p hbase.zookeeper.property.clientPort -v 2181',
+      ]
+  #Setup hbase master
+  master_commands = ['apt-get install -y hbase-master']
+  master_commands.extend(common_commands)
+  master_commands.extend([
+      'python hadoopProperties.py -i -f /etc/hbase/conf/hbase-site.xml -p hbase.rest.port -v 60050',
+      'service hbase-master start',
+      'apt-get install -y hbase-rest',
+      'service hbase-rest start',
+      'apt-get install -y hbase-thrift',
+      'service hbase-thrift start'
+    ])
+  print str(runCommands(master_commands, credential_list[0]))
+  #Setupd region servers
+  region_commands = ['apt-get install -y hbase-regionserver']
+  region_commands.extend(common_commands)
+  region_commands.append('service hbase-regionserver start')
+  for credentials in credential_list[1:]:
+    print str(runCommands(region_commands, credentials))
 
 if __name__ == '__main__':
-  configureHBase([SshCredentials('namenode.hadoop'), SshCredentials('jobtracker.hadoop'), SshCredentials('datanode0.hadoop')], ['namenode.hadoop', 'jobtracker.hadoop', 'datanode0.hadoop'])
-
-if __name__ == '__main__2':
   parser = argparse.ArgumentParser(description='''
   This script is designed start a cdh431 hadoop cluster
   ''')
@@ -139,6 +158,7 @@ if __name__ == '__main__2':
   parser.add_argument('-o', '--datanodes', default=2, type=int, help='Number of datanodes to create')
   parser.add_argument('-s', '--size', default=1, type=int, help='Size (GB) of datanode disks')
   parser.add_argument('-z', '--zookeeper_size', default=3, type=int, help='The number of nodes in the zookeeper quorum')
+  parser.add_argument('-b', '--hbase_size', default=3, type=int, help='The number of nodes to use for hbase')
   args = parser.parse_args()
   jobtracker = args.jobtracker + '.' + args.domain
   namenode = args.namenode + '.' + args.domain
@@ -146,12 +166,13 @@ if __name__ == '__main__2':
   all_nodes = [jobtracker, namenode]
   all_nodes.extend(datanodes)
   zookeeper_nodes = all_nodes[:args.zookeeper_size]
+  hbase_nodes = all_nodes[:args.zookeeper_size]
   startContainer(namenode, 'docker:5000/cdh431namenode', '/root/namenode_init.sh')
   startContainer(jobtracker, 'docker:5000/cdh431jobtracker', '/root/jobtracker_init.sh')
   folders = {}
   for datanode in datanodes:
     folders[datanode] = createHostDisk(datanode, args.size)
-  waitOnSsh(namenode)
+  waitOnSsh(SshCredentials(namenode))
   for datanode in datanodes:
     folder = folders[datanode]
     dn = folder + '/dn'
@@ -180,3 +201,4 @@ if __name__ == '__main__2':
         'su - hdfs -c "hadoop fs -chown ' + user + ' /user/' + user + '"'
       ], SshCredentials(namenode))
   configureZookeeper([SshCredentials(hostname) for hostname in zookeeper_nodes])
+  configureHBase([SshCredentials(hostname) for hostname in hbase_nodes], SshCredentials(namenode), zookeeper_nodes)
