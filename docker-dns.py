@@ -9,6 +9,8 @@ from twisted.names.error import DNSQueryRefusedError
 
 TTL=30
 
+#authbind twistd -u 1000 -g 1000 -y docker-dns.py
+
 def getRunningContainers():
   #docker ps | tail -n +2 | awk '{print $1}' | xargs docker inspect
   p1 = Popen(['docker', 'ps'], stdout = PIPE)
