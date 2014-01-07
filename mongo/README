@@ -1,0 +1,5 @@
+Uses enterprise mongo, NOT FOR PRODUCTION UNLESS PROPERLY LICENSED
+https://www.mongodb.com/products/mongodb-enterprise
+
+Example invocation:
+docker run -dns=172.17.0.95 -h=kerberos.mongo.test -d 5cf63be9083b
