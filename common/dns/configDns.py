@@ -108,6 +108,7 @@ if __name__ == '__main__':
   parser.add_argument("-t", "--temporary", action="store_true", help="Don't save changes, just write to stdout")
   parser.add_argument("-v", "--value", default=None, help="Value for option")
   parser.add_argument("-w", "--workingFile", default=expanduser('~/.configDns'), help="File to use")
+  parser.add_argument("-s", "--show", action="store_true", help="Print known hosts")
   args = parser.parse_args()
   try:
     with open(args.workingFile) as config:
@@ -149,6 +150,13 @@ if __name__ == '__main__':
         raise Exception("Name required for option remove (-n)")
       del old_config['options'][args.name]
     print str(old_config['options'])
+  elif args.show:
+    domains = sorted([ domain for domain in old_config['domains']])
+    for domain in domains:
+      if not 'in-addr.arpa' in domain:
+        print '# ' + domain + ':'
+        for host in sorted(old_config['domains'][domain]['hosts']):
+          print old_config['domains'][domain]['hosts'][host] + ' ' + str(host) + ' ' + str(host[:len(host) - len(domain) - 1])
   else:
     print str(old_config)
   if not args.temporary:
